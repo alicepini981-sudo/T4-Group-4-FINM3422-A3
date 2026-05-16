@@ -40,7 +40,7 @@ class Derivative:
     def get_zero_rate(self):
         return self.yield_curve.get_zero_rate(self.T)
     
-    class EuropeanCall(Derivative):
+class EuropeanCall(Derivative):
     # Prices a European call option using Black-Scholes
     def price(self):
         pass
