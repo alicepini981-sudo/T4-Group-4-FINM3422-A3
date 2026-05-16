@@ -45,3 +45,5 @@ class Derivative:
             return max(0, spot_at_maturity - self.K)
     
     class EuropeanPutOption(Derivative):
+        def payoff(self, spot_at_maturity)
+            return max(0, self.K - spot_at_maturity)
