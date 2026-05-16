@@ -39,3 +39,9 @@ class Derivative:
 
     def get_zero_rate(self):
         return self.yield_curve.get_zero_rate(self.T)
+    
+    class EuropeanCallOption(Derivative): 
+        def payoff(self, spot_at_maturity)
+            return max(0, spot_at_maturity - self.K)
+    
+    class EuropeanPutOption(Derivative):
