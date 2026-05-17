@@ -31,8 +31,7 @@ class Derivative:
 
     def price(self):
         raise NotImplementedError(
-            f"{type(self).__name__} must implement price()"
-        )
+            f"{type(self).__name__} must implement price()")
 
     def get_discount_factor(self):
         return self.yield_curve.get_discount_factor(self.T)
@@ -40,19 +39,12 @@ class Derivative:
     def get_zero_rate(self):
         return self.yield_curve.get_zero_rate(self.T)
     
-class EuropeanCall(Derivative):
-    # Prices a European call option using Black-Scholes
-    def price(self):
-        pass
-
-    def delta(self):
-        pass
-
-
-class EuropeanPut(Derivative):
-    # Prices a European put option using Black-Scholes
-    def delta(self):
-        pass
-
-    def price(self):
-        pass
+class EuropeanCallOption(Derivative): 
+    def payoff(self, spot_at_maturity):
+            spot_at_maturity = float(spot_at_maturity)
+            return max(0, spot_at_maturity - self.K)
+    
+class EuropeanPutOption(Derivative):
+    def payoff(self, spot_at_maturity):
+            spot_at_maturity = float(spot_at_maturity)
+            return max(0, self.K - spot_at_maturity)
