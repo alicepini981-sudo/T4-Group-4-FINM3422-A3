@@ -616,3 +616,57 @@ class EuropeanPutGreeks(EuropeanPut):
             "vega":  self.vega(),
             "rho":   self.rho(),
         }
+
+"""
+display.py  –  pretty-print helpers for derivatives objects.
+ 
+Usage in notebook:
+    from src.display import print_european_call_greeks, print_american_put, print_asian_call
+"""
+ 
+ 
+def print_european_call_greeks(option):
+    """Print a formatted Greeks table for a EuropeanCallGreeks instance."""
+    greeks = option.all_greeks()
+    print("=" * 45)
+    print("       EUROPEAN CALL OPTION - GREEKS")
+    print("=" * 45)
+    rows = [
+        ("Delta", greeks["delta"], "price change per $1 move in S0"),
+        ("Gamma", greeks["gamma"], "rate of change of delta"),
+        ("Theta", greeks["theta"], "price decay per calendar day"),
+        ("Vega",  greeks["vega"],  "price change per 1% vol move"),
+        ("Rho",   greeks["rho"],   "price change per 1% rate move"),
+    ]
+    for name, value, note in rows:
+        print(f"  {name:<10} {value:>10.4f}   ({note})")
+    print("=" * 45)
+ 
+ 
+def print_american_put(option):
+    """Print a formatted price + Greeks table for an AmericanPut instance."""
+    print("=" * 45)
+    print("       AMERICAN PUT OPTION - PRICE")
+    print("=" * 45)
+    print(f"  {'Binomial Steps':<20} {option.steps:>10}")
+    print(f"  {'Price':<20} ${option.price():>9.4f}")
+    print(f"  {'Delta':<20} {option.delta():>10.4f}")
+    print(f"  {'Gamma':<20} {option.gamma():>10.4f}")
+    print(f"  {'Theta':<20} {option.theta():>10.4f}")
+    print(f"  {'Vega':<20} {option.vega():>10.4f}")
+    print("=" * 45)
+ 
+ 
+def print_asian_call(option):
+    """Print a formatted price + Greeks table for an AsianCall instance."""
+    print("=" * 45)
+    print("       ASIAN CALL OPTION - MONTE CARLO")
+    print("=" * 45)
+    print(f"  {'Simulations':<20} {option.simulations:>10,}")
+    print(f"  {'Steps':<20} {option.steps:>10}")
+    print(f"  {'Price':<20} ${option.price():>9.4f}")
+    print(f"  {'Delta':<20} {option.delta():>10.4f}")
+    print(f"  {'Gamma':<20} {option.gamma():>10.4f}")
+    print(f"  {'Theta':<20} {option.theta():>10.4f}")
+    print(f"  {'Vega':<20} {option.vega():>10.4f}")
+    print("=" * 45)
