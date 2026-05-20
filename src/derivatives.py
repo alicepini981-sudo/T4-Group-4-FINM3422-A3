@@ -1,75 +1,122 @@
 import numpy as np
 from scipy.stats import norm
 
+
 class Derivative:
-    # Base for all derivative instruments
+    """Base for all derivative instruments."""
 
-    def __init__(self, S, K, T, sigma, yield_curve, q=0.0):
-        # Parameters:
-
-        # S: current underlying price
-        # K: strike price
-        # T: time to maturity
-        # sigma: annualised volatility
-        # yield_curve: used for discounting and zero rates
-        # q: continuous dividend yield (defaults to 0)
-
-        if S <= 0:
-            raise ValueError(f"S must be positive, got {S}")
-        if K <= 0:
-            raise ValueError(f"K must be positive, got {K}")
-        if T <= 0:
-            raise ValueError(f"T must be positive, got {T}")
-        if sigma <= 0:
-            raise ValueError(f"sigma must be positive, got {sigma}")
-
-        self.S = float(S)
-        self.K = float(K)
-        self.T = float(T)
-        self.sigma = float(sigma)
+    def __init__(self, S0, K, T, sigma, yield_curve):
+        """
+        Parameters:
+            S0: current underlying price
+            K: strike price
+            T: time to maturity (in years)
+            sigma: float
+                Volatility of the underlying asset (annualised)
+            yield_curve: YieldCurve
+                Instance of the YieldCurve class used for discounting
+        """
+        self.S0 = S0
+        self.K = K
+        self.T = T
+        self.sigma = sigma
         self.yield_curve = yield_curve
-        self.q = float(q)
 
     def price(self):
+        """
+        Computes the price of the derivative.
+
+        Must be implemented by subclasses.
+        """
         raise NotImplementedError(
-            f"{type(self).__name__} must implement price()")
-
-    def get_discount_factor(self):
-        return self.yield_curve.get_discount_factor(self.T)
-
-    def get_zero_rate(self):
-        return self.yield_curve.get_zero_rate(self.T)
-    
-class EuropeanCallOption(Derivative): 
-    def payoff(self, spot_at_maturity):
-            spot_at_maturity = float(spot_at_maturity)
-            return max(0, spot_at_maturity - self.K)
-            
-    def price(self):
-        D = self.get_discount_factor()
-        r = self.get_zero_rate()
-        d1 = (np.log(self.S / self.K) + (r - self.q + 0.5 * self.sigma ** 2) * self.T) / (self.sigma * np.sqrt(self.T))
-        d2 = d1 - self.sigma * np.sqrt(self.T)
-        return self.S * np.exp(-self.q * self.T) * norm.cdf(d1) - self.K * D * norm.cdf(d2)
+            "Pricing logic must be implemented in the subclass."
+        )
 
     def delta(self):
-        r = self.get_zero_rate()
-        d1 = (np.log(self.S / self.K) + (r - self.q + 0.5 * self.sigma ** 2) * self.T) / (self.sigma * np.sqrt(self.T))
-        return np.exp(-self.q * self.T) * norm.cdf(d1)
-    
-class EuropeanPutOption(Derivative):
-    def payoff(self, spot_at_maturity):
-            spot_at_maturity = float(spot_at_maturity)
-            return max(0, self.K - spot_at_maturity)
-    
+        raise NotImplementedError(
+            "Delta calculation must be implemented in the subclass."
+        )
+
+
+class EuropeanCall(Derivative):
+    """
+    European Call Option priced using the Black-Scholes formula.
+    """
+
     def price(self):
-        D = self.get_discount_factor()
-        r = self.get_zero_rate()
-        d1 = (np.log(self.S / self.K) + (r - self.q + 0.5 * self.sigma ** 2) * self.T) / (self.sigma * np.sqrt(self.T))
+        """
+        Returns the Black-Scholes price of a European call option.
+        """
+        # Obtain the appropriate zero rate from the yield curve
+        r = self.yield_curve.get_zero_rate(self.T)
+
+        # Black-Scholes d1 and d2
+        d1 = (
+            np.log(self.S0 / self.K)
+            + (r + 0.5 * self.sigma ** 2) * self.T
+        ) / (self.sigma * np.sqrt(self.T))
+
         d2 = d1 - self.sigma * np.sqrt(self.T)
-        return self.K * D * norm.cdf(-d2) - self.S * np.exp(-self.q * self.T) * norm.cdf(-d1)
+
+        # Black-Scholes pricing formula
+        call_price = (
+            self.S0 * norm.cdf(d1)
+            - self.K
+            * np.exp(-r * self.T)
+            * norm.cdf(d2)
+        )
+
+        return call_price
 
     def delta(self):
-        r = self.get_zero_rate()
-        d1 = (np.log(self.S / self.K) + (r - self.q + 0.5 * self.sigma ** 2) * self.T) / (self.sigma * np.sqrt(self.T))
-        return np.exp(-self.q * self.T) * (norm.cdf(d1) - 1)
+        """
+        Returns delta
+        """
+        r = self.yield_curve.get_zero_rate(self.T)
+
+        d1 = (
+            np.log(self.S0 / self.K)
+            + (r + 0.5 * self.sigma ** 2) * self.T
+        ) / (self.sigma * np.sqrt(self.T))
+
+        return norm.cdf(d1)
+
+
+class EuropeanPut(Derivative):
+
+    def price(self):
+        r = self.yield_curve.get_zero_rate(self.T)
+
+        d1 = (
+            np.log(self.S0 / self.K)
+            + (r + 0.5 * self.sigma ** 2) * self.T
+        ) / (self.sigma * np.sqrt(self.T))
+
+        d2 = d1 - self.sigma * np.sqrt(self.T)
+
+        put_price = (
+            self.K
+            * np.exp(-r * self.T)
+            * norm.cdf(-d2)
+            - self.S0 * norm.cdf(-d1)
+        )
+
+        return put_price
+
+    def delta(self):
+        """
+        Returns delta
+        """
+        r = self.yield_curve.get_zero_rate(self.T)
+
+        d1 = (
+            np.log(self.S0 / self.K)
+            + (r + 0.5 * self.sigma ** 2) * self.T
+        ) / (self.sigma * np.sqrt(self.T))
+
+        return norm.cdf(d1) - 1
+
+
+# Aliases for backwards compatibility
+EuropeanCallOption = EuropeanCall
+EuropeanPutOption  = EuropeanPut
