@@ -153,3 +153,9 @@ class Portfolio:
         var_dollar = -q * self.value()
 
         return max(var_dollar, 0)
+
+    def parametric_var(self, sigma_portfolio, alpha=0.95, horizon_days=1):
+        from scipy.stats import norm
+        z = norm.ppf(alpha)
+        scaled_sigma = sigma_portfolio * np.sqrt(horizon_days)
+        return z * scaled_sigma * self.value()
