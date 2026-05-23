@@ -81,26 +81,40 @@ class YieldCurve:
 
 
 
-def load_rba_yield_curve(filepath, f2_path=None, as_of_date=None, compounding="continuous"):
-    import pandas as pd
-    path = f2_path if f2_path is not None else filepath
-    df = pd.read_csv(path, skiprows=10, header=0)
-    df.columns = ["date", "yield_2y", "yield_3y", "yield_5y", "yield_10y", "yield_indexed"]
-    df = df.dropna(subset=["date"])
-    df = df.drop(columns=["yield_indexed"])
-    df = df.dropna(subset=["yield_2y", "yield_3y", "yield_5y", "yield_10y"], how="all")
-    if as_of_date is not None:
-        df = df[df["date"] == as_of_date]
-        if df.empty:
-            raise ValueError(f"No data found for date: {as_of_date}")
-    latest = df.iloc[-1]
-    print(f"Using yield curve data from: {latest['date']}")
-    maturities = [0.25, 2.0, 3.0, 5.0, 10.0]
-    zero_rates = [
-        0.0410,
-        float(latest["yield_2y"]) / 100,
-        float(latest["yield_3y"]) / 100,
-        float(latest["yield_5y"]) / 100,
-        float(latest["yield_10y"]) / 100,
-    ]
-    return YieldCurve(maturities, zero_rates, compounding=compounding)
+    def load_rba_yield_curve(filepath, f2_path=None, as_of_date=None, compounding="continuous"):
+        # --- Short end: F1.1 (BAB rates: 1m, 3m, 6m) ---
+        df1 = pd.read_csv(filepath, skiprows=11, header=None, names=[
+            'date','cash_rate_target','interbank_rate','interbank_high','interbank_low',
+            'interbank_vol','interbank_num','bab_1m','bab_3m','bab_6m',
+            'ois_1m','ois_3m','ois_6m','tn_1m','tn_3m','tn_6m'
+        ])
+        df1['date'] = pd.to_datetime(df1['date'], format='%d/%m/%Y', errors='coerce')
+        df1 = df1.dropna(subset=['date'])
+        short_cols = ['bab_1m','bab_3m','bab_6m']
+        df1[short_cols] = df1[short_cols].apply(pd.to_numeric, errors='coerce')
+
+        # --- Long end: F2.1 (gov bond yields: 2y, 3y, 5y, 10y) ---
+        df2 = pd.read_csv(f2_path, skiprows=11, header=None, names=[
+            'date','gov_2y','gov_3y','gov_5y','gov_10y','indexed_10y'
+        ])
+        df2['date'] = pd.to_datetime(df2['date'], format='%d-%b-%Y', errors='coerce')
+        df2 = df2.dropna(subset=['date'])
+        long_cols = ['gov_2y','gov_3y','gov_5y','gov_10y']
+        df2[long_cols] = df2[long_cols].apply(pd.to_numeric, errors='coerce')
+
+        if as_of_date:
+            target = pd.to_datetime(as_of_date, format='%d/%m/%Y')
+            row1 = df1.iloc[(df1['date'] - target).abs().argsort().iloc[0]]
+            row2 = df2.iloc[(df2['date'] - target).abs().argsort().iloc[0]]
+        else:
+            row1 = df1.dropna(subset=short_cols).iloc[-1]
+            row2 = df2.dropna(subset=long_cols).iloc[-1]
+
+        print(f"Using yield curve data from: {row2['date'].strftime('%d-%b-%Y')}")
+
+        maturities = [1/12, 3/12, 6/12, 2.0, 3.0, 5.0, 10.0]
+        zero_rates = [
+            row1['bab_1m']/100, row1['bab_3m']/100, row1['bab_6m']/100,
+            row2['gov_2y']/100, row2['gov_3y']/100, row2['gov_5y']/100, row2['gov_10y']/100,
+        ]
+        return YieldCurve(maturities, zero_rates, compounding=compounding)
