@@ -1,11 +1,10 @@
 import numpy as np
 import pandas as pd
+import matplotlib.pyplot as plt
 
 
 class EquityPosition:
-    """
-    Simple equity object for the portfolio layer.
-    """
+    """Simple equity object for the portfolio layer."""
 
     def __init__(self, ticker, spot):
         self.ticker = ticker
@@ -15,147 +14,168 @@ class EquityPosition:
         return self.spot
 
     def delta(self):
-        # Equity moves one-for-one with itself
         return 1.0
 
 
 class Portfolio:
-    """
-    Simple portfolio class for A3.
-
-    This class:
-    - stores positions
-    - computes total portfolio value
-    - computes total portfolio delta
-    - computes basic historical VaR
-    - creates a simple position table
-
-    Scenario analysis should be done in the notebook, not here.
-    """
 
     def __init__(self):
         self.positions = []
 
     def add_position(self, instrument, quantity, label=None):
-        """
-        Add an instrument position to the portfolio.
-        """
-        self.positions.append({
-            "instrument": instrument,
-            "quantity": quantity,
-            "label": label
-        })
+        self.positions.append({"instrument": instrument, "quantity": quantity, "label": label})
 
     def value(self):
-        """
-        Compute total portfolio value.
-        """
-        total_value = 0.0
-
-        for position in self.positions:
-            instrument = position["instrument"]
-            quantity = position["quantity"]
-
-            total_value += quantity * instrument.price()
-
-        return total_value
+        return sum(p["quantity"] * p["instrument"].price() for p in self.positions)
 
     def delta(self):
-        """
-        Compute total portfolio delta.
-        """
-        total_delta = 0.0
-
-        for position in self.positions:
-            instrument = position["instrument"]
-            quantity = position["quantity"]
-
-            total_delta += quantity * instrument.delta()
-
-        return total_delta
+        return sum(p["quantity"] * p["instrument"].delta() for p in self.positions)
 
     def position_table(self):
-        """
-        Return a table showing each position's contribution
-        to value and delta.
-        """
         rows = []
-
-        for position in self.positions:
-            instrument = position["instrument"]
-            quantity = position["quantity"]
-
-            if position["label"] is not None:
-                name = position["label"]
-            elif hasattr(instrument, "ticker"):
-                name = instrument.ticker
-            else:
-                name = instrument.__class__.__name__
-
-            unit_value = instrument.price()
-            unit_delta = instrument.delta()
-
+        for p in self.positions:
+            inst = p["instrument"]
+            qty  = p["quantity"]
+            name = p["label"] or (inst.ticker if hasattr(inst, "ticker") else inst.__class__.__name__)
             rows.append({
-                "Position": name,
-                "Quantity": quantity,
-                "Unit Value": unit_value,
-                "Position Value": quantity * unit_value,
-                "Unit Delta": unit_delta,
-                "Position Delta": quantity * unit_delta
+                "Position":       name,
+                "Quantity":       qty,
+                "Unit Value":     inst.price(),
+                "Position Value": qty * inst.price(),
+                "Unit Delta":     inst.delta(),
+                "Position Delta": qty * inst.delta(),
             })
-
         df = pd.DataFrame(rows)
-
         if len(df) > 0:
-            total_row = pd.DataFrame([{
-                "Position": "TOTAL",
-                "Quantity": np.nan,
-                "Unit Value": np.nan,
+            total = pd.DataFrame([{
+                "Position": "TOTAL", "Quantity": np.nan, "Unit Value": np.nan,
                 "Position Value": df["Position Value"].sum(),
-                "Unit Delta": np.nan,
-                "Position Delta": df["Position Delta"].sum()
+                "Unit Delta": np.nan, "Position Delta": df["Position Delta"].sum()
             }])
-
-            df = pd.concat([df, total_row], ignore_index=True)
-
+            df = pd.concat([df, total], ignore_index=True)
         return df
 
     def historical_var(self, returns, alpha=0.95, horizon_days=1):
-        """
-        Compute basic historical VaR.
-
-        Parameters
-        ----------
-        returns : array-like
-            Historical return series
-        alpha : float
-            Confidence level (e.g. 0.95 or 0.99)
-        horizon_days : int
-            1-day or 10-day horizon
-
-        Returns
-        -------
-        float
-            Historical VaR in dollars
-        """
         returns = pd.Series(returns).dropna()
-
         if len(returns) == 0:
             raise ValueError("Return series is empty.")
-
         if horizon_days <= 0:
             raise ValueError("horizon_days must be positive.")
-
-        # Simple educational scaling for horizon
-        scaled_returns = returns * np.sqrt(horizon_days)
-
-        q = scaled_returns.quantile(1 - alpha)
-        var_dollar = -q * self.value()
-
-        return max(var_dollar, 0)
+        q = (returns * np.sqrt(horizon_days)).quantile(1 - alpha)
+        return max(-q * self.value(), 0)
 
     def parametric_var(self, sigma_portfolio, alpha=0.95, horizon_days=1):
         from scipy.stats import norm
-        z = norm.ppf(alpha)
-        scaled_sigma = sigma_portfolio * np.sqrt(horizon_days)
-        return z * scaled_sigma * self.value()
+        return norm.ppf(alpha) * sigma_portfolio * np.sqrt(horizon_days) * self.value()
+
+
+def build_portfolio(equity_params, instruments):
+    """Equal dollar weighting: $100,000 total, 25% per stock."""
+    quantities = {
+        name: int((100000 * 0.25) / equity_params[name]["S0"])
+        for name in equity_params
+    }
+    portfolio = Portfolio()
+    for name, inst in instruments.items():
+        portfolio.add_position(inst["equity"], quantity=quantities[name], label=f"Long {name} Equity")
+        portfolio.add_position(inst["call"],   quantity=10,               label=f"Long {name} Call")
+        portfolio.add_position(inst["put"],    quantity=-5,               label=f"Short {name} Put")
+    return portfolio, quantities
+
+
+def compute_var(equity_params, instruments, quantities, all_data, portfolio, portfolio_value):
+    """Compute historical and parametric VaR at 95% and 90% confidence."""
+    base_index = all_data["BHP"]["Close"].pct_change().dropna().index
+    portfolio_returns = sum(
+        quantities[name] * equity_params[name]["S0"] *
+        all_data[name]["Close"].pct_change().dropna().reindex(base_index, fill_value=0)
+        for name in instruments
+    ) / portfolio_value
+    sigma = portfolio_returns.std()
+    return {
+        "returns":  portfolio_returns,
+        "hist_95":  portfolio.historical_var(portfolio_returns, alpha=0.95, horizon_days=1),
+        "hist_90":  portfolio.historical_var(portfolio_returns, alpha=0.90, horizon_days=1),
+        "param_95": portfolio.parametric_var(sigma, alpha=0.95, horizon_days=1),
+        "param_90": portfolio.parametric_var(sigma, alpha=0.90, horizon_days=1),
+    }
+
+
+def compute_portfolio_greeks(instruments, portfolio):
+    """Compute aggregated portfolio Greeks across all positions."""
+    def agg(greek):
+        return sum(
+            10 * instruments[name]["call_greeks"].all_greeks()[greek]
+            + (-5) * getattr(instruments[name]["put"], greek)()
+            for name in instruments
+        )
+    return {
+        "delta": portfolio.delta(),
+        "gamma": agg("gamma"),
+        "vega":  agg("vega"),
+        "theta": agg("theta"),
+        "rho":   agg("rho"),
+    }
+
+
+def shift_curve(base_curve, rate_shift):
+    """Parallel shift a yield curve by rate_shift."""
+    from yieldcurve import YieldCurve
+    return YieldCurve(maturities=base_curve.maturities,
+                      zero_rates=[r + rate_shift for r in base_curve.zero_rates])
+
+
+def build_scenario_portfolio(instruments, quantities, base_curve, price_shock=0.0, rate_shift=0.0):
+    """Rebuild the full portfolio under shocked price and rate inputs."""
+    from derivatives import EuropeanCall, EuropeanPut
+    shocked_curve = shift_curve(base_curve, rate_shift)
+    shocked_portfolio = Portfolio()
+    for name, inst in instruments.items():
+        shocked_equity = EquityPosition(ticker=name, spot=inst["equity"].spot * (1 + price_shock))
+        shocked_call = EuropeanCall(S0=inst["call"].S0 * (1 + price_shock), K=inst["call"].K,
+                                    T=inst["call"].T, sigma=inst["call"].sigma, yield_curve=shocked_curve)
+        shocked_put  = EuropeanPut(S0=inst["put"].S0  * (1 + price_shock), K=inst["put"].K,
+                                    T=inst["put"].T,  sigma=inst["put"].sigma,  yield_curve=shocked_curve)
+        shocked_portfolio.add_position(shocked_equity, quantity=quantities[name], label=f"Long {name} Equity")
+        shocked_portfolio.add_position(shocked_call,   quantity=10,               label=f"Long {name} Call")
+        shocked_portfolio.add_position(shocked_put,    quantity=-5,               label=f"Short {name} Put")
+    return shocked_portfolio
+
+
+def run_scenarios(instruments, quantities, base_curve, base_value):
+    """Run standard scenario analysis and return a list of result dicts."""
+    scenarios = [
+        {"Scenario": "Underlying +5%", "price_shock":  0.05, "rate_shift":  0.0},
+        {"Scenario": "Underlying -5%", "price_shock": -0.05, "rate_shift":  0.0},
+        {"Scenario": "Rates +50bps",   "price_shock":  0.0,  "rate_shift":  0.005},
+        {"Scenario": "Rates -50bps",   "price_shock":  0.0,  "rate_shift": -0.005},
+    ]
+    results = []
+    for s in scenarios:
+        sp = build_scenario_portfolio(instruments, quantities, base_curve,
+                                      price_shock=s["price_shock"], rate_shift=s["rate_shift"])
+        shocked_value = sp.value()
+        pnl = shocked_value - base_value
+        results.append({"Scenario": s["Scenario"], "Base Value": base_value,
+                        "Shocked Value": shocked_value, "P&L": pnl,
+                        "% Change": pnl / base_value if base_value != 0 else np.nan})
+    return results
+
+
+def plot_sensitivity(sens, vols, maturities_range):
+    fig, axes = plt.subplots(2, 2, figsize=(14, 10))
+    for name, d in sens.items():
+        axes[0, 0].plot(vols,             d["call_v"], label=name)
+        axes[0, 1].plot(vols,             d["put_v"],  label=name)
+        axes[1, 0].plot(maturities_range, d["call_t"], label=name)
+        axes[1, 1].plot(maturities_range, d["put_t"],  label=name)
+    for ax, title, xlabel, ylabel in [
+        (axes[0, 0], "Call Price vs. Volatility",  "Volatility",       "Call Price"),
+        (axes[0, 1], "Put Price vs. Volatility",   "Volatility",       "Put Price"),
+        (axes[1, 0], "Call Price vs. Maturity",    "Maturity (Years)", "Call Price"),
+        (axes[1, 1], "Put Price vs. Maturity",     "Maturity (Years)", "Put Price"),
+    ]:
+        ax.set_title(title); ax.set_xlabel(xlabel); ax.set_ylabel(ylabel)
+        ax.legend(); ax.grid(True)
+    plt.tight_layout()
+    plt.show()
