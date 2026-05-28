@@ -1,6 +1,6 @@
 import numpy as np
 from scipy.stats import norm
-
+import matplotlib.pyplot as plt
 
 class Derivative:
     """Base for all derivative instruments."""
@@ -483,3 +483,59 @@ class EuropeanPutGreeks(EuropeanPut):
     def all_greeks(self):
         return {"delta": self.delta(), "gamma": self.gamma(),
                 "theta": self.theta(), "vega": self.vega(), "rho": self.rho()}
+
+def plot_greeks_comparison(instruments):
+    """
+    Plot grouped bar chart comparing European Call Greeks across all stocks.
+    """
+    fig, axes = plt.subplots(1, 5, figsize=(18, 5))
+ 
+    greek_names = ['Delta', 'Gamma', 'Theta', 'Vega', 'Rho']
+    stock_names = list(instruments.keys())
+    bar_colors = ['#2c3e50', '#e67e22', '#27ae60', '#e74c3c']
+ 
+    greek_data = {}
+    for name in stock_names:
+        g = instruments[name]["call_greeks"].all_greeks()
+        greek_data[name] = [g['delta'], g['gamma'], g['theta'], g['vega'], g['rho']]
+ 
+    x = np.arange(len(stock_names))
+    for i, (ax, greek) in enumerate(zip(axes, greek_names)):
+        values = [greek_data[n][i] for n in stock_names]
+        bars = ax.bar(x, values, color=bar_colors, width=0.6, edgecolor='white')
+        ax.set_title(greek, fontsize=13, fontweight='bold')
+        ax.set_xticks(x)
+        ax.set_xticklabels(stock_names, fontsize=10)
+        ax.grid(True, axis='y', alpha=0.3)
+ 
+        for bar, val in zip(bars, values):
+            ax.text(bar.get_x() + bar.get_width()/2, bar.get_height(),
+                    f'{val:.3f}', ha='center', va='bottom', fontsize=8)
+ 
+    plt.suptitle('European Call Greeks — Cross-Stock Comparison', fontsize=14, y=1.02)
+    plt.tight_layout()
+    plt.show()
+ 
+ 
+def plot_price_history(all_data):
+    """
+    Plot 2-year price history for all equities.
+    """
+    fig, axes = plt.subplots(2, 2, figsize=(14, 8))
+    stock_colors = {'BHP': '#2c3e50', 'CBA': '#e67e22', 'CSL': '#27ae60', 'WOW': '#e74c3c'}
+ 
+    for ax, (name, df) in zip(axes.flatten(), all_data.items()):
+        ax.plot(df.index, df['Close'], color=stock_colors[name], linewidth=1.2)
+        ax.set_title(f'{name} — Daily Close Price (2yr)', fontsize=12)
+        ax.set_ylabel('Price ($)', fontsize=10)
+        ax.grid(True, alpha=0.3)
+        ax.tick_params(axis='x', rotation=30)
+ 
+        last_price = df['Close'].iloc[-1]
+        ax.axhline(last_price, color=stock_colors[name], linestyle='--', alpha=0.4)
+        ax.text(df.index[-1], last_price, f'  ${last_price:.2f}',
+                va='center', fontsize=9, color=stock_colors[name], fontweight='bold')
+ 
+    plt.suptitle('Historical Equity Prices — 2-Year Window', fontsize=14, y=1.01)
+    plt.tight_layout()
+    plt.show()
