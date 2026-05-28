@@ -179,3 +179,109 @@ def plot_sensitivity(sens, vols, maturities_range):
         ax.legend(); ax.grid(True)
     plt.tight_layout()
     plt.show()
+
+def plot_var_distribution(portfolio_returns, portfolio_value, hist_var_95, hist_var_90):
+    """
+    Plot histogram of portfolio returns with VaR thresholds 
+    and normal distribution overlay.
+    """
+    from scipy.stats import norm
+ 
+    fig, ax = plt.subplots(figsize=(12, 6))
+ 
+    returns = portfolio_returns.dropna()
+ 
+    ax.hist(returns, bins=50, color='steelblue', alpha=0.7,
+            edgecolor='white', label='Daily Portfolio Returns')
+ 
+    ax.axvline(-hist_var_95 / portfolio_value, color='#e74c3c', linestyle='--', linewidth=2,
+               label=f'95% Historical VaR (${hist_var_95:,.0f})')
+    ax.axvline(-hist_var_90 / portfolio_value, color='#e67e22', linestyle='--', linewidth=2,
+               label=f'90% Historical VaR (${hist_var_90:,.0f})')
+ 
+    x_range = np.linspace(returns.min(), returns.max(), 200)
+    mu = returns.mean()
+    sigma_port = returns.std()
+    normal_curve = norm.pdf(x_range, mu, sigma_port)
+    bin_width = (returns.max() - returns.min()) / 50
+    scale = len(returns) * bin_width
+    ax.plot(x_range, normal_curve * scale, color='black', linewidth=1.5,
+            linestyle='-', label='Normal Distribution Fit')
+ 
+    ax.set_xlabel('Daily Portfolio Return', fontsize=12)
+    ax.set_ylabel('Frequency', fontsize=12)
+    ax.set_title('Portfolio Return Distribution with VaR Thresholds', fontsize=14)
+    ax.legend(fontsize=10)
+    ax.grid(True, alpha=0.3)
+    plt.tight_layout()
+    plt.show()
+ 
+ 
+def plot_scenarios(scenario_df):
+    """
+    Plot horizontal bar chart of scenario P&L results.
+    """
+    fig, ax = plt.subplots(figsize=(10, 6))
+ 
+    scenarios = scenario_df['Scenario'].values
+    pnl_values = scenario_df['P&L'].values
+    colors = ['#27ae60' if x >= 0 else '#e74c3c' for x in pnl_values]
+ 
+    bars = ax.barh(scenarios, pnl_values, color=colors, edgecolor='white', height=0.5)
+ 
+    for bar, val in zip(bars, pnl_values):
+        label = f'+${val:,.0f}' if val >= 0 else f'-${abs(val):,.0f}'
+        x_pos = val + (200 if val >= 0 else -200)
+        ha = 'left' if val >= 0 else 'right'
+        ax.text(x_pos, bar.get_y() + bar.get_height()/2, label,
+                va='center', ha=ha, fontsize=11, fontweight='bold')
+ 
+    ax.axvline(0, color='black', linewidth=0.8)
+    ax.set_xlabel('P&L Impact ($)', fontsize=12)
+    ax.set_title('Scenario Analysis — Portfolio P&L Under Hypothetical Shocks', fontsize=14)
+    ax.grid(True, axis='x', alpha=0.3)
+    plt.tight_layout()
+    plt.show()
+ 
+ 
+def plot_portfolio_composition(quantities, equity_params, instruments, portfolio_value):
+    """
+    Plot portfolio allocation pie chart and position type breakdown.
+    """
+    fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(14, 6))
+ 
+    stock_names = list(quantities.keys())
+    equity_values = [quantities[n] * equity_params[n]["S0"] for n in stock_names]
+    colors_pie = ['#2c3e50', '#e67e22', '#27ae60', '#e74c3c']
+ 
+    wedges, texts, autotexts = ax1.pie(
+        equity_values, labels=stock_names, autopct='%1.1f%%',
+        colors=colors_pie, startangle=90, textprops={'fontsize': 11}
+    )
+    for autotext in autotexts:
+        autotext.set_fontweight('bold')
+        autotext.set_color('white')
+    ax1.set_title('Equity Allocation by Stock', fontsize=13)
+ 
+    equity_total = sum(equity_values)
+    call_total = sum(10 * instruments[n]["call"].price() for n in instruments)
+    put_total = sum(5 * instruments[n]["put"].price() for n in instruments)
+ 
+    categories = ['Equity\nPositions', 'Long Calls\n(10 per stock)', 'Short Puts\n(-5 per stock)']
+    values = [equity_total, call_total, put_total]
+    bar_colors = ['#2c3e50', '#27ae60', '#e74c3c']
+ 
+    bars = ax2.bar(categories, values, color=bar_colors, edgecolor='white', width=0.5)
+    display_values = [equity_total, call_total, -put_total]
+    for bar, val in zip(bars, display_values):
+        label = f'${val:,.0f}'
+        ax2.text(bar.get_x() + bar.get_width()/2, bar.get_height() + 500, label,
+                 ha='center', va='bottom', fontsize=11, fontweight='bold')
+ 
+    ax2.set_ylabel('Value ($)', fontsize=12)
+    ax2.set_title('Portfolio Value by Position Type', fontsize=13)
+    ax2.grid(True, axis='y', alpha=0.3)
+ 
+    plt.suptitle(f'Portfolio Composition — ${portfolio_value:,.0f} Total', fontsize=14, y=1.02)
+    plt.tight_layout()
+    plt.show()
